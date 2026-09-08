@@ -1,0 +1,6 @@
+{
+  "name": "Local File Agent",
+  "description": "An offline natural language chat interface to manage device files and folders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
