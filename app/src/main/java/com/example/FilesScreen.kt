@@ -102,7 +102,53 @@ fun FilesScreen(vm: ChatViewModel, onHelp: () -> Unit, onGoChat: () -> Unit) {
         Icon(Icons.Outlined.CreateNewFolder, "New folder", tint = AppRed)
       }
     }
-    Spacer(Modifier.height(8.dp))
+    val totalSpace = root.totalSpace
+    val freeSpace = root.freeSpace
+    val usedSpace = (totalSpace - freeSpace).coerceAtLeast(0L)
+    val usedFraction = if (totalSpace > 0) (usedSpace.toFloat() / totalSpace).coerceIn(0f, 1f) else 0f
+
+    // ── Storage Space Analysis Card ───────────────────────────────────────
+    Column(
+      Modifier.fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 4.dp)
+        .clip(RoundedCornerShape(12.dp))
+        .background(AppCard)
+        .border(0.5.dp, AppBorder, RoundedCornerShape(12.dp))
+        .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+      Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Outlined.PieChart, null, tint = AppRed, modifier = Modifier.size(16.dp))
+          Spacer(Modifier.width(6.dp))
+          Text("Internal Storage", color = AppText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Text(
+          "${formatSize(usedSpace)} / ${formatSize(totalSpace)} (${(usedFraction * 100).toInt()}%)",
+          color = AppMuted,
+          fontSize = 12.sp,
+        )
+      }
+      Spacer(Modifier.height(6.dp))
+      LinearProgressIndicator(
+        progress = { usedFraction },
+        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+        color = AppRed,
+        trackColor = AppBorder,
+      )
+      Spacer(Modifier.height(4.dp))
+      Text(
+        "${formatSize(freeSpace)} free",
+        color = AppMuted,
+        fontSize = 11.sp,
+        modifier = Modifier.align(Alignment.End),
+      )
+    }
+
+    Spacer(Modifier.height(6.dp))
     Box(
       Modifier.weight(1f)
         .padding(horizontal = 16.dp)
