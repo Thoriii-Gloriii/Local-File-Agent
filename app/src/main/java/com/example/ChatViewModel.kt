@@ -22,12 +22,21 @@ sealed class PendingAction {
   data class ConfirmCleanEmpty(val path: String) : PendingAction()
 }
 
+data class FileInfo(
+  val name: String,
+  val path: String,
+  val sizeBytes: Long,
+  val isDir: Boolean,
+  val category: String,
+)
+
 data class ChatMessage(
   val id: String = UUID.randomUUID().toString(),
   val text: String,
   val isUser: Boolean,
   val action: PendingAction? = null,
   val imagePath: String? = null,
+  val fileList: List<FileInfo>? = null,
 )
 
 const val HELP_TEXT =
@@ -50,6 +59,7 @@ const val HELP_TEXT =
 
 class ChatViewModel : ViewModel() {
   val rootPath: String = Environment.getExternalStorageDirectory().absolutePath
+  var largeFileMb: Long = 500L  // default 500 MB, updated from Settings
 
   private val welcome =
     ChatMessage(
@@ -103,20 +113,23 @@ class ChatViewModel : ViewModel() {
       }
 
       if (lower.startsWith("large") || lower.contains("large files") || lower.contains("big files")) {
-        addBotMessage("Looking for files over 50 MB...")
+        val thresh = largeFileMb
+        addBotMessage("Looking for files over ${formatSize(thresh * 1024 * 1024)}...")
         viewModelScope.launch(Dispatchers.IO) {
           val big =
             File(rootPath)
               .walkTopDown()
               .onEnter { !it.name.startsWith(".") && it.name != "Android" }
-              .filter { it.isFile && it.length() > 50L * 1024 * 1024 }
+              .filter { it.isFile && it.length() > thresh * 1024 * 1024 }
               .toList()
               .sortedByDescending { it.length() }
-              .take(20)
-          addBotMessage(
-            if (big.isEmpty()) "No files over 50 MB found."
-            else "Largest files:\n" + big.joinToString("\n") { "${formatSize(it.length())}  ${it.absolutePath}" }
-          )
+              .take(30)
+          val infos = big.map { FileInfo(it.name, it.absolutePath, it.length(), false, fileCategory(it)) }
+          if (infos.isEmpty()) {
+            addBotMessage("No files over ${formatSize(thresh * 1024 * 1024)} found.")
+          } else {
+            addFileListMessage("Found ${infos.size} large files (threshold: ${formatSize(thresh * 1024 * 1024)}):", infos)
+          }
         }
         return
       }
@@ -149,10 +162,12 @@ class ChatViewModel : ViewModel() {
           addBotMessage("Searching for '$query'...")
           viewModelScope.launch(Dispatchers.IO) {
             val results = performSearch(rootPath, query)
-            addBotMessage(
-              "Search results:\n" +
-                (if (results.isEmpty()) "No results found." else results.joinToString("\n") { it.absolutePath })
-            )
+            if (results.isEmpty()) {
+              addBotMessage("No results found for '$query'.")
+            } else {
+              val infos = results.map { FileInfo(it.name, it.absolutePath, if (it.isFile) it.length() else 0L, it.isDirectory, fileCategory(it)) }
+              addFileListMessage("Found ${infos.size} result(s) for '$query':", infos)
+            }
           }
           return
         }
@@ -234,10 +249,14 @@ class ChatViewModel : ViewModel() {
         val target = quotes.firstOrNull() ?: words.find { it.contains("/") && !it.contains("list") } ?: ""
         val dir = if (target.isBlank()) File(rootPath) else resolveFile(target)
         if (dir.exists() && dir.isDirectory) {
-          val listStr =
-            dir.listFiles()?.joinToString("\n") { (if (it.isDirectory) "📁 " else "📄 ") + it.name }
-              ?: "Empty or cannot read."
-          addBotMessage("Contents of ${dir.absolutePath}:\n$listStr")
+          val files = dir.listFiles()
+            ?.filter { !it.name.startsWith(".") }
+            ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() })
+            ?: emptyList()
+          val infos = files.map { FileInfo(it.name, it.absolutePath, if (it.isFile) it.length() else 0L, it.isDirectory, fileCategory(it)) }
+          val totalSize = infos.filter { !it.isDir }.sumOf { it.sizeBytes }
+          val dirLabel = dir.name.takeIf { it.isNotEmpty() && it != "0" } ?: "Internal Storage"
+          addFileListMessage("$dirLabel — ${infos.size} items, ${formatSize(totalSize)}", infos)
         } else addBotMessage("Directory '${dir.absolutePath}' not found.")
         return
       }
@@ -373,6 +392,10 @@ class ChatViewModel : ViewModel() {
       }
     }
     _messages.update { list -> list.map { if (it.action == action) it.copy(action = null) else it } }
+  }
+
+  private fun addFileListMessage(text: String, files: List<FileInfo>, action: PendingAction? = null) {
+    _messages.update { it + ChatMessage(text = text, isUser = false, action = action, fileList = files) }
   }
 
   private fun addBotMessage(text: String, action: PendingAction? = null, imagePath: String? = null) {

@@ -53,15 +53,19 @@ class MainActivity : ComponentActivity() {
       navigationBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
     )
     setContent {
-      MyApplicationTheme {
-        Surface(modifier = Modifier.fillMaxSize(), color = AppBg) { AppRoot() }
+      val prefs = getSharedPreferences("lfa", Context.MODE_PRIVATE)
+      var theme by remember { mutableStateOf(prefs.getString("theme_mode", "dark") ?: "dark") }
+      MyApplicationTheme(theme = theme) {
+        Surface(modifier = Modifier.fillMaxSize(), color = AppBg) {
+          AppRoot(onThemeChange = { theme = it })
+        }
       }
     }
   }
 }
 
 @Composable
-fun AppRoot() {
+fun AppRoot(onThemeChange: (String) -> Unit = {}) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("lfa", Context.MODE_PRIVATE) }
   var stage by rememberSaveable { mutableIntStateOf(0) }
@@ -72,7 +76,7 @@ fun AppRoot() {
         prefs.edit().putBoolean("onboarded", true).apply()
         stage = 2
       }
-    else -> PermissionWrapper { MainScaffold() }
+    else -> PermissionWrapper { MainScaffold(onThemeChange = onThemeChange) }
   }
 }
 
@@ -227,8 +231,16 @@ private val tabs =
   )
 
 @Composable
-fun MainScaffold() {
+fun MainScaffold(onThemeChange: (String) -> Unit = {}) {
   val vm: ChatViewModel = viewModel()
+  val context = LocalContext.current
+  val prefs   = remember { context.getSharedPreferences("lfa", Context.MODE_PRIVATE) }
+
+  // Init large file threshold from saved prefs
+  LaunchedEffect(Unit) {
+    vm.largeFileMb = prefs.getInt("large_file_threshold_mb", 500).toLong()
+  }
+
   var tab by rememberSaveable { mutableIntStateOf(0) }
   var showHelp by rememberSaveable { mutableStateOf(false) }
 
@@ -287,7 +299,7 @@ fun MainScaffold() {
               tab = 0
             },
           )
-        else -> SettingsScreen(vm, onHelp = { showHelp = true })
+        else -> SettingsScreen(vm, onHelp = { showHelp = true }, onThemeChange = onThemeChange)
       }
     }
   }

@@ -54,13 +54,35 @@ private fun SettingsRow(icon: ImageVector, title: String, subtitle: String, onCl
   }
 }
 
+private fun formatThresholdLabel(mb: Int): String =
+  if (mb < 1024) "$mb MB" else String.format("%.1f GB", mb / 1024f)
+
+// Stepped values: 250 MB → 10 GB
+private val thresholdSteps = listOf(250, 500, 750, 1024, 2048, 3072, 4096, 5120, 7680, 10240)
+
 @Composable
-fun SettingsScreen(vm: ChatViewModel, onHelp: () -> Unit) {
+fun SettingsScreen(vm: ChatViewModel, onHelp: () -> Unit, onThemeChange: (String) -> Unit = {}) {
   val context = LocalContext.current
-  var showAbout by remember { mutableStateOf(false) }
+  val prefs   = remember { context.getSharedPreferences("lfa", android.content.Context.MODE_PRIVATE) }
+
+  var showAbout       by remember { mutableStateOf(false) }
+  var showThemePicker by remember { mutableStateOf(false) }
+
+  // ── Large file threshold ──────────────────────────────────────────────────
+  val savedMb    = remember { prefs.getInt("large_file_threshold_mb", 500) }
+  val savedIndex = remember { thresholdSteps.indexOfFirst { it >= savedMb }.coerceAtLeast(0) }
+  var sliderPos  by remember { mutableFloatStateOf(savedIndex.toFloat()) }
+  val currentMb  = thresholdSteps[sliderPos.toInt().coerceIn(0, thresholdSteps.lastIndex)]
+
+  // ── Theme ─────────────────────────────────────────────────────────────────
+  val savedTheme  = remember { prefs.getString("theme_mode", "dark") ?: "dark" }
+  var activeTheme by remember { mutableStateOf(savedTheme) }
+  val themeLabel  = when (activeTheme) { "light" -> "Light Mode ☀️" ; "system" -> "System Default ⚙️" ; else -> "Dark Mode 🌙" }
 
   Column(Modifier.fillMaxSize().background(AppBg).verticalScroll(rememberScrollState())) {
     AppTopBar(title = "Settings", onHelp = onHelp)
+
+    // ── General section ───────────────────────────────────────────────────
     Column(
       Modifier.padding(horizontal = 16.dp)
         .clip(RoundedCornerShape(14.dp))
@@ -81,7 +103,7 @@ fun SettingsScreen(vm: ChatViewModel, onHelp: () -> Unit) {
         }
       }
       HorizontalDivider(color = AppBorder.copy(alpha = 0.5f))
-      SettingsRow(Icons.Outlined.Palette, "Appearance", "Dark theme, red accent", null)
+      SettingsRow(Icons.Outlined.Palette, "Appearance", themeLabel) { showThemePicker = true }
       HorizontalDivider(color = AppBorder.copy(alpha = 0.5f))
       SettingsRow(Icons.Outlined.DeleteOutline, "Clear chat history", "Start a fresh conversation") {
         vm.clearChat()
@@ -90,7 +112,62 @@ fun SettingsScreen(vm: ChatViewModel, onHelp: () -> Unit) {
       HorizontalDivider(color = AppBorder.copy(alpha = 0.5f))
       SettingsRow(Icons.Outlined.Info, "About", "Version ${BuildConfig.VERSION_NAME}") { showAbout = true }
     }
+
     Spacer(Modifier.height(18.dp))
+
+    // ── Large File Threshold section ──────────────────────────────────────
+    Column(
+      Modifier.padding(horizontal = 16.dp)
+        .clip(RoundedCornerShape(14.dp))
+        .background(AppSurface)
+        .border(0.5.dp, AppBorder, RoundedCornerShape(14.dp))
+        .padding(16.dp)
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(AppCard),
+          contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Outlined.Storage, null, tint = AppText) }
+        Spacer(Modifier.width(12.dp))
+        Column {
+          Text("Large File Threshold", color = AppText, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+          Text("Files above this size are flagged", color = AppMuted, fontSize = 12.sp)
+        }
+      }
+      Spacer(Modifier.height(12.dp))
+      Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text("250 MB", color = AppMuted, fontSize = 11.sp)
+        Text(
+          formatThresholdLabel(currentMb),
+          color = AppRed, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+        )
+        Text("10 GB", color = AppMuted, fontSize = 11.sp)
+      }
+      Slider(
+        value = sliderPos,
+        onValueChange = { sliderPos = it },
+        onValueChangeFinished = {
+          val mb = thresholdSteps[sliderPos.toInt().coerceIn(0, thresholdSteps.lastIndex)]
+          prefs.edit().putInt("large_file_threshold_mb", mb).apply()
+          vm.largeFileMb = mb.toLong()
+        },
+        valueRange = 0f..(thresholdSteps.lastIndex.toFloat()),
+        steps = thresholdSteps.lastIndex - 1,
+        colors = SliderDefaults.colors(
+          thumbColor = AppRed,
+          activeTrackColor = AppRed,
+          inactiveTrackColor = AppBorder,
+        ),
+      )
+    }
+
+    Spacer(Modifier.height(18.dp))
+
+    // ── Logo / About card ─────────────────────────────────────────────────
     Column(
       Modifier.fillMaxWidth()
         .padding(horizontal = 16.dp)
@@ -110,6 +187,7 @@ fun SettingsScreen(vm: ChatViewModel, onHelp: () -> Unit) {
     Spacer(Modifier.height(24.dp))
   }
 
+  // ── About dialog ──────────────────────────────────────────────────────────
   if (showAbout) {
     AlertDialog(
       onDismissRequest = { showAbout = false },
@@ -122,6 +200,45 @@ fun SettingsScreen(vm: ChatViewModel, onHelp: () -> Unit) {
         )
       },
       confirmButton = { TextButton(onClick = { showAbout = false }) { Text("Close", color = AppRed) } },
+    )
+  }
+
+  // ── Theme picker dialog ───────────────────────────────────────────────────
+  if (showThemePicker) {
+    AlertDialog(
+      onDismissRequest = { showThemePicker = false },
+      containerColor = AppCard,
+      title = { Text("Appearance", color = AppText) },
+      text = {
+        Column {
+          listOf(
+            "dark"   to "Dark Mode 🌙",
+            "light"  to "Light Mode ☀️",
+            "system" to "System Default ⚙️",
+          ).forEach { (key, label) ->
+            Row(
+              Modifier.fillMaxWidth()
+                .clickable {
+                  activeTheme = key
+                  prefs.edit().putString("theme_mode", key).apply()
+                  onThemeChange(key)
+                  showThemePicker = false
+                }
+                .padding(vertical = 12.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              RadioButton(
+                selected = activeTheme == key,
+                onClick = null,
+                colors = RadioButtonDefaults.colors(selectedColor = AppRed),
+              )
+              Spacer(Modifier.width(8.dp))
+              Text(label, color = AppText, fontSize = 15.sp)
+            }
+          }
+        }
+      },
+      confirmButton = {},
     )
   }
 }
@@ -138,8 +255,11 @@ private val helpItems =
     Triple("find [name]", "Search names and contents", Icons.Outlined.Search),
     Triple("preview [file]", "Preview an image or text file", Icons.Outlined.Visibility),
     Triple("size", "Show storage usage", Icons.Outlined.PieChart),
-    Triple("large files", "Find files over 50 MB", Icons.Outlined.Storage),
+    Triple("large files", "Find files above your threshold", Icons.Outlined.Storage),
     Triple("organize [folder]", "Sort files by type", Icons.Outlined.Folder),
+    Triple("clean empty folders", "Remove empty subfolders", Icons.Outlined.DeleteSweep),
+    Triple("create template 'name' from 'path'", "Save a folder as template", Icons.Outlined.Bookmark),
+    Triple("use template 'name' at 'path'", "Apply a saved template", Icons.Outlined.BookmarkBorder),
   )
 
 @Composable

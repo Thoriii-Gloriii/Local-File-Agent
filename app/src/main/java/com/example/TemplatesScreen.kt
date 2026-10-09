@@ -38,12 +38,26 @@ private data class Template(val title: String, val desc: String, val icon: Image
 
 private val builtIn =
   listOf(
-    Template("Organize Downloads", "Sort files into Images, Videos, Audio, Documents", Icons.Outlined.Download, "organize 'Download'"),
-    Template("Organize storage", "Sort loose files in the main folder by type", Icons.Outlined.Folder, "organize 'root'"),
-    Template("Find large files", "List the biggest files over 50 MB", Icons.Outlined.Storage, "large files"),
-    Template("Clean empty folders", "Remove empty subfolders", Icons.Outlined.DeleteSweep, "clean empty folders"),
-    Template("Find images", "Search storage for JPG files", Icons.Outlined.Image, "find jpg"),
-    Template("Show downloads", "List what's in your Download folder", Icons.Outlined.FolderOpen, "list 'Download'"),
+    // ── Discovery & Search ─────────────────────────────────────────────────
+    Template("Show Downloads", "List everything in your Download folder", Icons.Outlined.FolderOpen, "list 'Download'"),
+    Template("Storage usage", "Check how much space is used", Icons.Outlined.PieChart, "size"),
+    Template("Find large files", "List files above your size threshold", Icons.Outlined.Storage, "large files"),
+    Template("Find images", "Search all storage for image files", Icons.Outlined.Image, "find jpg"),
+    Template("Find videos", "Search all storage for video files", Icons.Outlined.Movie, "find mp4"),
+    Template("Find audio", "Search all storage for audio files", Icons.Outlined.MusicNote, "find mp3"),
+    Template("Find PDFs", "Search all storage for PDF files", Icons.Outlined.Description, "find pdf"),
+    Template("Find APKs", "List downloaded installer packages", Icons.Outlined.Android, "find apk"),
+    // ── Organization ──────────────────────────────────────────────────────
+    Template("Organize Downloads", "Sort Downloads into Images, Videos, Audio, Docs", Icons.Outlined.Download, "organize 'Download'"),
+    Template("Organize storage", "Sort root storage loose files by type", Icons.Outlined.Folder, "organize 'root'"),
+    Template("Clean empty folders", "Remove all empty subfolders", Icons.Outlined.DeleteSweep, "clean empty folders"),
+    // ── DCIM & Camera ─────────────────────────────────────────────────────
+    Template("Browse Camera", "Open your Camera folder", Icons.Outlined.CameraAlt, "list 'DCIM/Camera'"),
+    Template("Find screenshots", "List all screenshots taken", Icons.Outlined.Screenshot, "list 'Pictures/Screenshots'"),
+    // ── File Operations ───────────────────────────────────────────────────
+    Template("Show Documents", "List your Documents folder", Icons.Outlined.Article, "list 'Documents'"),
+    Template("Show Music", "List your Music folder", Icons.Outlined.LibraryMusic, "list 'Music'"),
+    Template("Show Movies", "List your Movies folder", Icons.Outlined.VideoLibrary, "list 'Movies'"),
   )
 
 private val categoryColors =

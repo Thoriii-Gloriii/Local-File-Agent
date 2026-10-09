@@ -16,6 +16,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,9 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
@@ -33,8 +43,8 @@ import com.example.ui.theme.*
 private val chips =
   listOf(
     "Show downloads" to "list 'Download'",
-    "Find images" to "find jpg",
-    "Large files" to "large files",
+    "Find images"    to "find jpg",
+    "Large files"    to "large files",
     "What can you do?" to "help",
   )
 
@@ -63,7 +73,21 @@ fun ChatScreen(vm: ChatViewModel, onHelp: () -> Unit) {
       contentPadding = PaddingValues(vertical = 12.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      items(messages, key = { it.id }) { msg -> MessageBubble(msg) { vm.executeAction(it) } }
+      items(messages, key = { it.id }) { msg ->
+        if (msg.fileList != null) {
+          Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.Top,
+          ) {
+            Image(painterResource(R.drawable.logo_icon), null, Modifier.size(36.dp))
+            Spacer(Modifier.width(8.dp))
+            FileListCard(msg) { vm.executeAction(it) }
+          }
+        } else {
+          MessageBubble(msg) { vm.executeAction(it) }
+        }
+      }
     }
     LazyRow(
       contentPadding = PaddingValues(horizontal = 16.dp),
@@ -94,13 +118,13 @@ fun ChatScreen(vm: ChatViewModel, onHelp: () -> Unit) {
         singleLine = true,
         colors =
           OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = AppCard,
+            focusedContainerColor   = AppCard,
             unfocusedContainerColor = AppCard,
-            focusedBorderColor = AppRed,
-            unfocusedBorderColor = AppBorder,
-            cursorColor = AppRed,
-            focusedTextColor = AppText,
-            unfocusedTextColor = AppText,
+            focusedBorderColor      = AppRed,
+            unfocusedBorderColor    = AppBorder,
+            cursorColor             = AppRed,
+            focusedTextColor        = AppText,
+            unfocusedTextColor      = AppText,
           ),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
         keyboardActions = KeyboardActions(onSend = { send(input) }),
@@ -116,20 +140,99 @@ fun ChatScreen(vm: ChatViewModel, onHelp: () -> Unit) {
   }
 }
 
+// ─── Rich file list card ──────────────────────────────────────────────────────
+@Composable
+fun FileListCard(message: ChatMessage, onAction: (PendingAction) -> Unit) {
+  val files = message.fileList ?: return
+  var expanded by remember { mutableStateOf(false) }
+  val shown = if (expanded || files.size <= 5) files else files.take(5)
+
+  Column(
+    Modifier
+      .widthIn(max = 320.dp)
+      .background(AppCard, RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp))
+      .border(0.5.dp, AppBorder, RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp))
+      .padding(12.dp)
+  ) {
+    Text(message.text, color = AppText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    if (shown.isNotEmpty()) Spacer(Modifier.height(8.dp))
+    shown.forEach { f ->
+      val (icon, tint) = fileIconAndTint(f)
+      Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Box(
+          Modifier.size(32.dp).background(tint.copy(alpha = 0.18f), RoundedCornerShape(8.dp)),
+          contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp)) }
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+          Text(f.name, color = AppText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+          if (f.isDir) {
+            Text(f.path, color = AppMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+          } else {
+            Text(formatSize(f.sizeBytes), color = AppMuted, fontSize = 11.sp)
+          }
+        }
+        if (!f.isDir) {
+          Spacer(Modifier.width(6.dp))
+          Text(
+            formatSize(f.sizeBytes),
+            color = AppMuted,
+            fontSize = 10.sp,
+            modifier = Modifier
+              .background(AppBorder.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+              .padding(horizontal = 5.dp, vertical = 2.dp),
+          )
+        }
+      }
+    }
+    if (files.size > 5) {
+      Spacer(Modifier.height(4.dp))
+      Text(
+        if (expanded) "Show less ▲" else "+ ${files.size - 5} more ▼",
+        color = AppRed,
+        fontSize = 12.sp,
+        modifier = Modifier.clickable { expanded = !expanded },
+      )
+    }
+    if (message.action != null) {
+      Spacer(Modifier.height(10.dp))
+      Button(
+        onClick = { onAction(message.action) },
+        colors = ButtonDefaults.buttonColors(containerColor = AppRed, contentColor = Color.White),
+      ) { Text("Confirm") }
+    }
+  }
+}
+
+private fun fileIconAndTint(f: FileInfo): Pair<ImageVector, Color> =
+  if (f.isDir) Icons.Filled.Folder to Color(0xFFF5A623)
+  else when (f.category) {
+    "Images"    -> Icons.Filled.Image          to Color(0xFF9B6BFF)
+    "Videos"    -> Icons.Filled.Movie          to Color(0xFF3DA5FF)
+    "Audio"     -> Icons.Filled.MusicNote      to Color(0xFFFF4D4D)
+    "Documents" -> Icons.Filled.Description    to Color(0xFFF5A623)
+    "Apps"      -> Icons.Filled.Android        to Color(0xFFFF6B4D)
+    else        -> Icons.Filled.InsertDriveFile to Color(0xFF8E8E96)
+  }
+
+// ─── Plain message bubble ─────────────────────────────────────────────────────
 @Composable
 fun MessageBubble(message: ChatMessage, onAction: (PendingAction) -> Unit) {
   val isUser = message.isUser
   val shape =
     RoundedCornerShape(
-      topStart = 18.dp,
-      topEnd = 18.dp,
+      topStart    = 18.dp,
+      topEnd      = 18.dp,
       bottomStart = if (isUser) 18.dp else 4.dp,
-      bottomEnd = if (isUser) 4.dp else 18.dp,
+      bottomEnd   = if (isUser) 4.dp else 18.dp,
     )
   Row(
     Modifier.fillMaxWidth(),
     horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-    verticalAlignment = Alignment.Top,
+    verticalAlignment     = Alignment.Top,
   ) {
     if (!isUser) {
       Image(painterResource(R.drawable.logo_icon), null, Modifier.size(36.dp))
@@ -143,7 +246,7 @@ fun MessageBubble(message: ChatMessage, onAction: (PendingAction) -> Unit) {
       Column {
         Text(
           message.text,
-          color = if (isUser) Color.White else AppText,
+          color    = if (isUser) Color.White else AppText,
           fontSize = 15.sp,
           lineHeight = 22.sp,
         )
@@ -166,17 +269,17 @@ fun MessageBubble(message: ChatMessage, onAction: (PendingAction) -> Unit) {
           Spacer(Modifier.height(12.dp))
           Button(
             onClick = { onAction(message.action) },
-            colors = ButtonDefaults.buttonColors(containerColor = AppRed, contentColor = Color.White),
+            colors  = ButtonDefaults.buttonColors(containerColor = AppRed, contentColor = Color.White),
           ) {
             Text(
               when (message.action) {
-                is PendingAction.ConfirmDelete -> "Confirm Delete"
-                is PendingAction.ConfirmWrite -> "Confirm Write"
-                is PendingAction.ConfirmMove -> "Confirm Move"
-                is PendingAction.ConfirmCopy -> "Confirm Copy"
-                is PendingAction.ConfirmUseTemplate -> "Confirm Apply Template"
-                is PendingAction.ConfirmOrganize -> "Confirm Organize"
-                is PendingAction.ConfirmCleanEmpty -> "Confirm Clean Up"
+                is PendingAction.ConfirmDelete       -> "Confirm Delete"
+                is PendingAction.ConfirmWrite        -> "Confirm Write"
+                is PendingAction.ConfirmMove         -> "Confirm Move"
+                is PendingAction.ConfirmCopy         -> "Confirm Copy"
+                is PendingAction.ConfirmUseTemplate  -> "Confirm Apply Template"
+                is PendingAction.ConfirmOrganize     -> "Confirm Organize"
+                is PendingAction.ConfirmCleanEmpty   -> "Confirm Clean Up"
               }
             )
           }
