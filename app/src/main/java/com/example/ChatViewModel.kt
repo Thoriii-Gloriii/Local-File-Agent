@@ -1,14 +1,20 @@
 package com.example
 
+import android.app.Application
 import android.os.Environment
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.ai.AgentBrain
+import com.example.ai.AgentBrainResult
+import com.example.ai.LlmState
+import com.example.ai.LocalLlmManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
@@ -57,7 +63,8 @@ const val HELP_TEXT =
     "- create template 'name' from 'path'\n" +
     "- use template 'name' at 'path'"
 
-class ChatViewModel : ViewModel() {
+class ChatViewModel(application: Application) : AndroidViewModel(application) {
+  val llmManager = LocalLlmManager(application)
   val rootPath: String = Environment.getExternalStorageDirectory().absolutePath
   var largeFileMb: Long = 500L  // default 500 MB, updated from Settings
 
@@ -285,7 +292,56 @@ class ChatViewModel : ViewModel() {
         }
       }
 
-      addBotMessage("I didn't quite understand that. Type 'help' to see the commands I know.")
+      // ── On-Device Offline Local LLM Flow ──────────────────────────────
+      when (llmManager.state.value) {
+        LlmState.READY -> {
+          addBotMessage("Thinking (offline AI)...")
+          viewModelScope.launch(Dispatchers.IO) {
+            try {
+              val root = File(rootPath)
+              val storageInfo = "${formatSize(root.totalSpace - root.freeSpace)} used of ${formatSize(root.totalSpace)}"
+              val prompt = AgentBrain.buildPrompt(trimmed, storageInfo)
+              val response = llmManager.generateResponse(prompt)
+              val result = AgentBrain.parseOutput(response, rootPath)
+
+              withContext(Dispatchers.Main) {
+                _messages.update { list -> list.filterNot { it.text == "Thinking (offline AI)..." } }
+                when (result) {
+                  is AgentBrainResult.ActionPlan -> {
+                    addBotMessage(result.explanation, result.action)
+                  }
+                  is AgentBrainResult.DirectAction -> {
+                    addBotMessage(result.explanation)
+                    processCommand(result.command)
+                  }
+                  is AgentBrainResult.Conversational -> {
+                    addBotMessage(result.text)
+                  }
+                }
+              }
+            } catch (e: Exception) {
+              withContext(Dispatchers.Main) {
+                _messages.update { list -> list.filterNot { it.text == "Thinking (offline AI)..." } }
+                addBotMessage("Offline AI inference error: ${e.localizedMessage ?: "Unknown error"}")
+              }
+            }
+          }
+        }
+        LlmState.DOWNLOADING -> {
+          val pct = (llmManager.downloadProgress.value * 100).toInt()
+          addBotMessage("⏳ On-device AI model is currently downloading ($pct%). Type 'help' for built-in commands.")
+        }
+        LlmState.INITIALIZING -> {
+          addBotMessage("⚙️ On-device AI is loading into memory. Try again in a moment, or type 'help'.")
+        }
+        LlmState.NOT_DOWNLOADED, LlmState.ERROR -> {
+          addBotMessage(
+            "🧠 **Offline AI Brain is not installed yet.**\n" +
+              "To chat with me in natural language, download or load the offline model in Settings ⚙️.\n" +
+              "Meanwhile, you can use built-in commands (type 'help' or tap Templates)."
+          )
+        }
+      }
     } catch (e: Exception) {
       addBotMessage("Failed to parse or execute command: ${e.message}")
     }

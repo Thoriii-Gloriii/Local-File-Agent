@@ -27,8 +27,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai.LlmState
 import com.example.ui.theme.*
 
 @Composable
@@ -111,6 +113,98 @@ fun SettingsScreen(vm: ChatViewModel, onHelp: () -> Unit, onThemeChange: (String
       }
       HorizontalDivider(color = AppBorder.copy(alpha = 0.5f))
       SettingsRow(Icons.Outlined.Info, "About", "Version ${BuildConfig.VERSION_NAME}") { showAbout = true }
+    }
+
+    Spacer(Modifier.height(18.dp))
+
+    // ── Local AI Brain (Offline LLM) Section ─────────────────────────────
+    val llmState by vm.llmManager.state.collectAsState()
+    val downloadProgress by vm.llmManager.downloadProgress.collectAsState()
+    val statusMsg by vm.llmManager.statusMessage.collectAsState()
+
+    Column(
+      Modifier.padding(horizontal = 16.dp)
+        .clip(RoundedCornerShape(14.dp))
+        .background(AppSurface)
+        .border(0.5.dp, AppBorder, RoundedCornerShape(14.dp))
+        .padding(16.dp)
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(AppCard),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(Icons.Outlined.Psychology, null, tint = AppRed)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+          Text("Local Offline AI Brain", color = AppText, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+          Text(statusMsg, color = AppMuted, fontSize = 12.sp)
+        }
+        val badgeColor = when (llmState) {
+          LlmState.READY -> Color(0xFF22C55E)
+          LlmState.DOWNLOADING, LlmState.INITIALIZING -> Color(0xFFF59E0B)
+          LlmState.ERROR -> AppRed
+          LlmState.NOT_DOWNLOADED -> AppMuted
+        }
+        val badgeText = when (llmState) {
+          LlmState.READY -> "Ready"
+          LlmState.DOWNLOADING -> "${(downloadProgress * 100).toInt()}%"
+          LlmState.INITIALIZING -> "Loading"
+          LlmState.ERROR -> "Error"
+          LlmState.NOT_DOWNLOADED -> "Offline"
+        }
+        Box(
+          Modifier.clip(RoundedCornerShape(6.dp))
+            .background(badgeColor.copy(alpha = 0.15f))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+          Text(badgeText, color = badgeColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+      }
+
+      if (llmState == LlmState.DOWNLOADING) {
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(
+          progress = { downloadProgress },
+          modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+          color = AppRed,
+          trackColor = AppBorder,
+        )
+      }
+
+      Spacer(Modifier.height(12.dp))
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (llmState) {
+          LlmState.NOT_DOWNLOADED, LlmState.ERROR -> {
+            Button(
+              onClick = { vm.llmManager.startDownload() },
+              colors = ButtonDefaults.buttonColors(containerColor = AppRed, contentColor = Color.White),
+              modifier = Modifier.weight(1f),
+              shape = RoundedCornerShape(10.dp),
+            ) {
+              Icon(Icons.Outlined.CloudDownload, null, modifier = Modifier.size(16.dp))
+              Spacer(Modifier.width(6.dp))
+              Text("Download Model (~850 MB)", fontSize = 12.sp)
+            }
+          }
+          LlmState.READY -> {
+            OutlinedButton(
+              onClick = { vm.llmManager.deleteModel() },
+              colors = ButtonDefaults.outlinedButtonColors(contentColor = AppRed),
+              modifier = Modifier.weight(1f),
+              shape = RoundedCornerShape(10.dp),
+            ) {
+              Icon(Icons.Outlined.DeleteOutline, null, modifier = Modifier.size(16.dp))
+              Spacer(Modifier.width(6.dp))
+              Text("Delete Model", fontSize = 12.sp)
+            }
+          }
+          LlmState.DOWNLOADING, LlmState.INITIALIZING -> {
+            Text("Model is currently preparing. Please keep app open.", color = AppMuted, fontSize = 12.sp)
+          }
+        }
+      }
     }
 
     Spacer(Modifier.height(18.dp))
